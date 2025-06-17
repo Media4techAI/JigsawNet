@@ -4,10 +4,10 @@ This file save all of hyperparameters
 
 # NOTE: directory must end at '/', because we use this path to call external c++ program
 WorkSpacePath = {
-    "training_dataset_root": "your path",
+    "training_dataset_root": "",
     "testing_dataset_root": "your path",
     "example_testing_root": "../Examples",
-    "checkpoint_dir": "C:/Users/range/Desktop/CNN_checkpoint/JigsawArbitraryFragmentsBoost"
+    "checkpoint_dir": "JigsawNet/checkpoints/",
 }
 
 # for CNN

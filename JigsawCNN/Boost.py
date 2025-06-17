@@ -18,6 +18,7 @@ import argparse
 Args = []
 
 def BoostTraining(net, input, roi_box, target, weights, data_ids, tensorboard_dir, checkpoint_dir, is_training=True):
+    import time
     target_value = target
     gt_classification = tf.argmax(target, dimension=1, name="gt_classification")
     logits = net._inference(input, roi_box, is_training)
@@ -36,51 +37,65 @@ def BoostTraining(net, input, roi_box, target, weights, data_ids, tensorboard_di
     saver = tf.train.Saver(max_to_keep=2)
 
     with tf.Session() as sess:
+        print("🚀 Initializing session...")
         sess.run(sess_init_op)
+        print("✅ Session initialized.")
+
         tensorboard_writer = tf.summary.FileWriter(tensorboard_dir, sess.graph)
         coord = tf.train.Coordinator()
         threads = tf.train.start_queue_runners(coord=coord)
 
+        print("🧪 Testing input pipeline before starting training...")
+
+        try:
+            sample_input, sample_target = sess.run([input, target])
+            print("✅ Successfully fetched one input batch.")
+            print("   Input shape:", sample_input.shape)
+            print("   Target shape:", sample_target.shape)
+        except Exception as e:
+            print("❌ ERROR fetching input data:", e)
+            coord.request_stop()
+            coord.join(threads)
+            return
+
+        print("🏋️ Starting training loop...")
+
         while global_step.eval() < Parameters.NNHyperparameters['total_training_step']:
-            if global_step.eval() % 1000 == 0 and global_step.eval() != 0:
-                print("Check point...", end='')
-                saver.save(sess, checkpoint_dir+'/', global_step=global_step)
-                print("Done")
+            step = global_step.eval()
 
-            print("current step: %d" % tf.train.global_step(sess, global_step))
-            if (global_step.eval() + 1) % 10 == 0:
-                visualization = False
-            else:
-                visualization = False
-            if global_step.eval() % 10 == 0:
-                tensorboard_record = True
-            else:
-                tensorboard_record = False
+            if step % 1000 == 0 and step != 0:
+                print("💾 Checkpointing at step", step, end='...')
+                saver.save(sess, checkpoint_dir + '/', global_step=global_step)
+                print(" Done.")
 
-            if not visualization:
-                _, la, value_loss, acc, summary = sess.run([opt_op, target, losses['value_loss'], accuracy, merged])
-                if tensorboard_record:
-                    tensorboard_writer.add_summary(summary, global_step.eval())
-            else:
-                _, im, la, value_loss, acc, summary = sess.run(
-                    [opt_op, input, target, losses['value_loss'], accuracy, merged])
-                if tensorboard_record:
-                    tensorboard_writer.add_summary(summary, global_step.eval())
-                cv2.imshow("state", im[0].astype(np.uint8))
-                cv2.waitKey()
-            print("value_loss: " + str(value_loss))
-            print("accuracy: " + str(acc))
+            print(f"🌀 Step {step} - running training op...")
+
+            try:
+                _, la, value_loss, acc, summary = sess.run(
+                    [opt_op, target, losses['value_loss'], accuracy, merged]
+                )
+                print("✅ Step complete.")
+            except Exception as e:
+                print("❌ ERROR during training step:", e)
+                break
+
+            if step % 10 == 0:
+                tensorboard_writer.add_summary(summary, step)
+
+            print(f"📊 value_loss: {value_loss}")
+            print(f"📈 accuracy: {acc}")
             print("---------------------------")
-        tensorboard_writer.close()
-        print("session graph has saved to " + tensorboard_dir)
 
-        print("The final checkpoint has saved to %s ..."%checkpoint_dir, end='')
-        saver.save(sess, checkpoint_dir+"/", global_step=global_step)
-        print("Done!")
+        tensorboard_writer.close()
+        print("📁 TensorBoard graph saved to:", tensorboard_dir)
+
+        print(f"💾 Saving final checkpoint to {checkpoint_dir}...", end='')
+        saver.save(sess, checkpoint_dir + "/", global_step=global_step)
+        print(" Done!")
 
         coord.request_stop()
         coord.join(threads)
-
+        
 '''
 Allow restore variables even though some new variables have been added after training
 see https://github.com/tensorflow/tensorflow/issues/312
@@ -481,7 +496,7 @@ def main(_):
 
     if mode == "training":
         training_directory_root = Parameters.WorkSpacePath['training_dataset_root']
-        tfrecord_filename = os.path.join(Parameters.WorkSpacePath['training_dataset_root'], 'training_input_tfrecord_roi_withId')
+        tfrecord_filename = os.path.join(Parameters.WorkSpacePath['training_dataset_root'], '/home/nugh75/Git/JigsawNet/set_1_record.tfrecord')
         if not os.path.exists(tfrecord_filename):
             TFRecordIOWithROI.createTFRecord(tfrecord_filename, dataset_root=training_directory_root)
         total_record = sum(1 for _ in tf.python_io.tf_record_iterator(tfrecord_filename))
