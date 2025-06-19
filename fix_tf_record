@@ -1,0 +1,19 @@
+import tensorflow as tf
+import os
+
+input_path = "test_tfrecord.tfrecord"
+output_path = "test_tfrecord_fixed.tfrecord"
+
+writer = tf.python_io.TFRecordWriter(output_path)
+
+for idx, record in enumerate(tf.python_io.tf_record_iterator(input_path)):
+    example = tf.train.Example()
+    example.ParseFromString(record)
+
+    # ⚠️ Overwrite the 'id' field
+    example.features.feature['id'].int64_list.value[:] = [idx]
+
+    writer.write(example.SerializeToString())
+
+writer.close()
+print(f"✅ Fixed TFRecord saved to: {output_path}")

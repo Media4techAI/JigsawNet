@@ -220,13 +220,80 @@ def readTestingTFRecord(filename_queue):
 
     return inputs, targets, roi_boxes
 
+import os
+import sys
+import glob
+import random
+from Parameters import WorkSpacePath  # adjust if necessary
+
+def createTrainTestTFRecords(train_tfrecord_path, test_tfrecord_path, data_path):
+    def _bytes_feature(value):
+        return tf.train.Feature(bytes_list=tf.train.BytesList(value=[value]))
+    def _int64_feature(value):
+        return tf.train.Feature(int64_list=tf.train.Int64List(value=[value]))
+    def _float_feature(value):
+        return tf.train.Feature(float_list=tf.train.FloatList(value=value))
+
+    all_paths = glob.glob(data_path + "/*")
+    random.shuffle(all_paths)
+
+    # Split into 80% train, 20% test
+    split_idx = int(0.8 * len(all_paths))
+    train_paths = all_paths[:split_idx]
+    test_paths = all_paths[split_idx:]
+
+    print(f"📦 Total: {len(all_paths)} — 🏋️‍♂️ Train: {len(train_paths)}, 🧪 Test: {len(test_paths)}")
+
+    def write_tfrecord(paths, tfrecord_path):
+        writer = tf.io.TFRecordWriter(tfrecord_path)
+        for data_id, path in enumerate(paths):
+            try:
+                progress = f"Writing {os.path.basename(tfrecord_path)}: {data_id+1}/{len(paths)}"
+                sys.stdout.write('\r' + progress)
+                sys.stdout.flush()
+
+                target_path = os.path.join(path, "target.txt")
+                roi_path = os.path.join(path, "roi.txt")
+                image = resizeImage(os.path.join(path, "state.png"))
+
+                with open(target_path) as f:
+                    for line in f:
+                        line = line.rstrip()
+                        if line and line[0] != '#':
+                            target_vec = [float(x) for x in line.split()]
+                            break
+                with open(roi_path) as f:
+                    for line in f:
+                        line = line.rstrip()
+                        if line and line[0] != '#':
+                            roi_vec = [float(x) for x in line.split()]
+                            break
+
+                height, width = image.shape[:2]
+
+                example = tf.train.Example(features=tf.train.Features(feature={
+                    'height': _int64_feature(height),
+                    'width': _int64_feature(width),
+                    'id': _int64_feature(data_id),
+                    'training_input': _bytes_feature(image.tobytes()),
+                    'training_target': _float_feature(target_vec),
+                    'training_roi': _float_feature(roi_vec)
+                }))
+                writer.write(example.SerializeToString())
+            except Exception as e:
+                print(f"\n❌ Error processing {path}: {e}")
+                continue
+        writer.close()
+        print(f"\n✅ Finished writing {os.path.basename(tfrecord_path)}")
+
+    # Write both TFRecord files
+    write_tfrecord(train_paths, train_tfrecord_path)
+    write_tfrecord(test_paths, test_tfrecord_path)
+    
 if __name__ == "__main__":
-    # Ensure Parameters.py has WorkSpacePath['training_dataset_root'] set correctly
-    # E.g., Parameters.WorkSpacePath['training_dataset_root'] = '/path/to/your/dataset'
-
-    # Choose a meaningful name for your output TFRecord file
-    my_tfrecord_output_name = "set_1_record.tfrecord"
-
-    print(f"Starting TFRecord creation for: {my_tfrecord_output_name}")
-    createTFRecord(my_tfrecord_output_name)
-    print(f"\nTFRecord file '{my_tfrecord_output_name}' created successfully!")
+    
+    train_tfrecord_path = os.path.join("train_tfrecord.tfrecord")
+    test_tfrecord_path = os.path.join("test_tfrecord.tfrecord")
+    createTrainTestTFRecords(train_tfrecord_path, test_tfrecord_path, data_path="/home/nugh75/Git/archeology-fragment-reconstruction/dataset/jigsaw_training")
+    print(f"📂 Train TFRecord created at: {train_tfrecord_path}")
+    print(f"📂 Test TFRecord created at: {test_tfrecord_path}")

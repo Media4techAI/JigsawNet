@@ -17,22 +17,54 @@ import argparse
 
 Args = []
 
-def BoostTraining(net, input, roi_box, target, weights, data_ids, tensorboard_dir, checkpoint_dir, is_training=True):
+def BoostTraining(net,
+                  input, roi_box, target, weights, data_ids,
+                  input_test, roi_box_test, target_test, weights_test, data_ids_test,
+                  tensorboard_dir, checkpoint_dir,
+                  is_training=True):
+
     import time
+
+    # TRAINING graph
     target_value = target
-    gt_classification = tf.argmax(target, dimension=1, name="gt_classification")
+    gt_classification = tf.argmax(target, axis=1, name="gt_classification")
     logits = net._inference(input, roi_box, is_training)
-    with tf.name_scope('accuracy'):
-        correct_prediction = tf.equal(net.pred, gt_classification)
+
+    with tf.name_scope('metrics'):
+        pred_class = tf.argmax(logits, axis=1, name="predicted_class")
+        correct_prediction = tf.equal(pred_class, gt_classification)
         accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
-    tf.summary.scalar('accuracy', tf.reduce_mean(accuracy))
+        precision_op = tf.metrics.precision(gt_classification, pred_class)
+        recall_op = tf.metrics.recall(gt_classification, pred_class)
+
+        # Use running values (precision_op[1], recall_op[1])
+        precision = precision_op[1]
+        recall = recall_op[1]
+        epsilon = 1e-7
+        f1_score = 2 * precision * recall / (precision + recall + epsilon)
+
+        tf.summary.scalar('accuracy', accuracy)
+        tf.summary.scalar('precision', precision)
+        tf.summary.scalar('recall', recall)
+        tf.summary.scalar('f1_score', f1_score)
 
     losses = net._loss(logits, target_value, weights, data_ids)
-
     global_step = tf.Variable(0, trainable=False, name="global_step")
     opt_op = net._optmization(losses=losses, global_step=global_step)
+
+    # TEST graph
+    with tf.name_scope('test'):
+        with tf.compat.v1.variable_scope(tf.compat.v1.get_variable_scope(), reuse=True):
+            logits_test = net._inference(input_test, roi_box_test, is_training=False)
+        gt_classification_test = tf.argmax(target_test, axis=1, name="gt_classification_test")
+        pred_test = tf.argmax(logits_test, axis=1, name="test_prediction")
+        correct_prediction_test = tf.equal(pred_test, gt_classification_test)
+        test_accuracy = tf.reduce_mean(tf.cast(correct_prediction_test, tf.float32))
+        tf.summary.scalar('test_accuracy', test_accuracy)
+
     merged = tf.summary.merge_all()
 
+    # Init ops and saver
     sess_init_op = tf.group(tf.global_variables_initializer(), tf.local_variables_initializer())
     saver = tf.train.Saver(max_to_keep=2)
 
@@ -49,9 +81,10 @@ def BoostTraining(net, input, roi_box, target, weights, data_ids, tensorboard_di
 
         try:
             sample_input, sample_target = sess.run([input, target])
-            print("✅ Successfully fetched one input batch.")
-            print("   Input shape:", sample_input.shape)
-            print("   Target shape:", sample_target.shape)
+            sample_input_test, sample_target_test = sess.run([input_test, target_test])
+            print("✅ Successfully fetched training and test batches.")
+            print("   Train Input shape:", sample_input.shape)
+            print("   Test Input shape:", sample_input_test.shape)
         except Exception as e:
             print("❌ ERROR fetching input data:", e)
             coord.request_stop()
@@ -59,6 +92,9 @@ def BoostTraining(net, input, roi_box, target, weights, data_ids, tensorboard_di
             return
 
         print("🏋️ Starting training loop...")
+        
+        best_test_accuracy = 0.0
+        best_test_f1 = 0.0
 
         while global_step.eval() < Parameters.NNHyperparameters['total_training_step']:
             step = global_step.eval()
@@ -71,9 +107,10 @@ def BoostTraining(net, input, roi_box, target, weights, data_ids, tensorboard_di
             print(f"🌀 Step {step} - running training op...")
 
             try:
-                _, la, value_loss, acc, summary = sess.run(
-                    [opt_op, target, losses['value_loss'], accuracy, merged]
-                )
+                _, la, value_loss, acc, precision_val, recall_val, f1_val, summary = sess.run([
+                    opt_op, target, losses['value_loss'], accuracy,
+                    precision, recall, f1_score, merged
+                ])
                 print("✅ Step complete.")
             except Exception as e:
                 print("❌ ERROR during training step:", e)
@@ -82,20 +119,67 @@ def BoostTraining(net, input, roi_box, target, weights, data_ids, tensorboard_di
             if step % 10 == 0:
                 tensorboard_writer.add_summary(summary, step)
 
-            print(f"📊 value_loss: {value_loss}")
-            print(f"📈 accuracy: {acc}")
+            if step % 100 == 0:
+                acc_test, precision_val_test, recall_val_test, f1_test = sess.run(
+                    [test_accuracy, precision, recall, f1_score]
+                )
+                print(f"🧪 Test accuracy at step {step}: {acc_test:.4f}")
+                print(f"🧪 Test F1 score at step {step}: {f1_test:.4f}")
+                print(f"🧪 Test precision at step {step}: {precision_val_test:.4f}")
+                print(f"🧪 Test recall at step {step}: {recall_val_test:.4f}")
+
+                with open(os.path.join(checkpoint_dir, "training_log.txt"), "a") as logf:
+                    logf.write(
+                        f"Step {step} - Test Accuracy: {acc_test:.4f}, "
+                        f"Precision: {precision_val_test:.4f}, "
+                        f"Recall: {recall_val_test:.4f}, "
+                        f"F1: {f1_test:.4f}\n"
+                    )
+
+                if acc_test > best_test_accuracy:
+                    best_test_accuracy = acc_test
+                    best_path = os.path.join(checkpoint_dir, "best_model_accuracy.ckpt")
+                    print(f"🏆 New best **accuracy** model found! Saving to {best_path}...")
+                    saver.save(sess, best_path)
+
+                if f1_test > best_test_f1:
+                    best_test_f1 = f1_test
+                    best_path_f1 = os.path.join(checkpoint_dir, "best_model_f1.ckpt")
+                    print(f"🥇 New best **F1** model found! Saving to {best_path_f1}...")
+                    saver.save(sess, best_path_f1)
+
+            print(f"📊 value_loss: {value_loss:.4f}")
+            print(f"📈 train accuracy: {acc:.4f}")
+            print(f"📐 precision: {precision_val:.4f}")
+            print(f"🔁 recall: {recall_val:.4f}")
+            print(f"🎯 F1 score: {f1_val:.4f}")
             print("---------------------------")
 
         tensorboard_writer.close()
         print("📁 TensorBoard graph saved to:", tensorboard_dir)
+        
+        # Recalculate final metrics
+        acc_test_final, precision_test_final, recall_test_final, f1_test_final = sess.run(
+            [test_accuracy, precision, recall, f1_score]
+        )
+
+        # Save final test metrics to a log file
+        final_log_path = os.path.join(checkpoint_dir, "final_results.txt")
+        with open(final_log_path, "w") as f:
+            f.write("Final test results after training:\n")
+            f.write(f"Test Accuracy: {acc_test_final:.4f}\n")
+            f.write(f"Precision: {precision_test_final:.4f}\n")
+            f.write(f"Recall: {recall_test_final:.4f}\n")
+            f.write(f"F1 Score: {f1_test_final:.4f}\n")
+        print(f"📝 Final test results saved to {final_log_path}")
 
         print(f"💾 Saving final checkpoint to {checkpoint_dir}...", end='')
         saver.save(sess, checkpoint_dir + "/", global_step=global_step)
         print(" Done!")
 
         coord.request_stop()
-        coord.join(threads)
-        
+        coord.join(threads)     
+
 '''
 Allow restore variables even though some new variables have been added after training
 see https://github.com/tensorflow/tensorflow/issues/312
@@ -490,55 +574,75 @@ def ValidatePathNet(alignments, gt_pose, fragments_dir, net, evaluator, K, Alpha
 
 def main(_):
     mode = Args['mode']
-    K = Parameters.NNHyperparameters["learner_num"]                    # the number of learner for boost training
+    K = Parameters.NNHyperparameters["learner_num"]
     params = Parameters.NNHyperparameters
     checkpoint_root = Parameters.WorkSpacePath['checkpoint_dir']
 
     if mode == "training":
-        training_directory_root = Parameters.WorkSpacePath['training_dataset_root']
-        tfrecord_filename = os.path.join(Parameters.WorkSpacePath['training_dataset_root'], '/home/nugh75/Git/JigsawNet/set_1_record.tfrecord')
-        if not os.path.exists(tfrecord_filename):
-            TFRecordIOWithROI.createTFRecord(tfrecord_filename, dataset_root=training_directory_root)
-        total_record = sum(1 for _ in tf.python_io.tf_record_iterator(tfrecord_filename))
-        # total_record = 610201
-        D = np.ones(total_record, dtype=np.float32)         # training data weight, it will be modified according to the evalution result to solve the within class imbalance
-        Alpha = np.zeros(K, dtype=np.float32)               # the learner weight which indicates how important the learner is
-        '''Each learner'''
+        tfrecord_filename_training = "/home/nugh75/Git/JigsawNet/train_tfrecord_fixed.tfrecord"
+        tfrecord_filename_testing = "/home/nugh75/Git/JigsawNet/test_tfrecord_fixed.tfrecord"
+
+        
+        total_record = sum(1 for _ in tf.python_io.tf_record_iterator(tfrecord_filename_training))
+        D = np.ones(total_record, dtype=np.float32)
+        Alpha = np.zeros(K, dtype=np.float32)
+
         for i in range(K):
-            '''train network G'''
-            subdir = "g%d/tensorboard"%i
+            subdir = f"g{i}/tensorboard"
             tensorboard_dir = os.path.join(checkpoint_root, subdir)
             checkpoint_dir = os.path.dirname(tensorboard_dir)
             os.makedirs(tensorboard_dir, exist_ok=True)
 
-            '''save weight D'''
             np.savetxt(os.path.join(checkpoint_dir, "data_weight.txt"), D, delimiter=' ')
 
             net = JIgsawAbitraryNetROI.JigsawNetWithROI(params)
-            filename_queue = tf.train.string_input_producer([tfrecord_filename], capacity=128)
-            inputs, targets, roi_boxes, data_ids = TFRecordIOWithROI.readTFRecord(filename_queue)
+
+            # ⬇️ Training queue
+            filename_queue_train = tf.train.string_input_producer([tfrecord_filename_training], capacity=128)
+            inputs, targets, roi_boxes, data_ids = TFRecordIOWithROI.readTFRecord(filename_queue_train)
             weights = tf.constant(D, dtype=tf.float32)
-            BoostTraining(net=net, input=inputs, roi_box=roi_boxes, target=targets, weights=weights, data_ids=data_ids, tensorboard_dir=tensorboard_dir, checkpoint_dir=checkpoint_dir, is_training=True)
+
+            # ⬇️ Testing queue
+            filename_queue_test = tf.train.string_input_producer([tfrecord_filename_testing], capacity=128)
+            inputs_test, targets_test, roi_boxes_test, data_ids_test = TFRecordIOWithROI.readTFRecord(filename_queue_test)
+            weights_test = tf.constant(1.0, dtype=tf.float32)  # dummy weight for now
+
+            # ⬇️ Train with both training and test data
+            BoostTraining(
+                net=net,
+                input=inputs, roi_box=roi_boxes, target=targets, weights=weights, data_ids=data_ids,
+                input_test=inputs_test, roi_box_test=roi_boxes_test, target_test=targets_test, weights_test=weights_test, data_ids_test=data_ids_test,
+                tensorboard_dir=tensorboard_dir,
+                checkpoint_dir=checkpoint_dir,
+                is_training=True
+            )
+
             tf.reset_default_graph()
 
-            '''calculate alpha and update weights'''
-            filename_queue = tf.train.string_input_producer([tfrecord_filename], shuffle=False, num_epochs=1)
-            inputs, targets, roi_boxes, data_ids = TFRecordIOWithROI.readTFRecord(filename_queue)
-            weights = tf.constant(D, dtype=tf.float32)
-            alpha, new_weights = Evaluation(net=net, input=inputs, roi_box=roi_boxes, target=targets, weights=weights, data_ids=data_ids, checkpoint_dir=checkpoint_dir, is_training=False)
+            # Evaluate model and update weights
+            filename_queue_eval = tf.train.string_input_producer([tfrecord_filename_training], shuffle=False, num_epochs=1)
+            inputs_eval, targets_eval, roi_boxes_eval, data_ids_eval = TFRecordIOWithROI.readTFRecord(filename_queue_eval)
+            weights_eval = tf.constant(D, dtype=tf.float32)
+            alpha, new_weights = Evaluation(
+                net=net,
+                input=inputs_eval,
+                roi_box=roi_boxes_eval,
+                target=targets_eval,
+                weights=weights_eval,
+                data_ids=data_ids_eval,
+                checkpoint_dir=checkpoint_dir,
+                is_training=False
+            )
             Alpha[i] = alpha
             D = new_weights
-            tf.reset_default_graph()
-            '''save alpha'''
-            with open(os.path.join(checkpoint_dir, "alpha.txt"), 'w') as f:
-                f.write("%f"%alpha)
 
-        '''Save Alpha'''
+            tf.reset_default_graph()
+
+            with open(os.path.join(checkpoint_dir, "alpha.txt"), 'w') as f:
+                f.write("%f" % alpha)
+
         with open(os.path.join(checkpoint_root, "alpha.txt"), 'w') as f:
-            alp = ""
-            for a in Alpha:
-                alp += "%f "%a
-            f.write(alp)
+            f.write(" ".join(f"{a:.6f}" for a in Alpha))
     elif mode == "batch_testing":           # use tfrecord as input to evaluate
         '''Batch Testing'''
         testing_directory_root = Parameters.WorkSpacePath['testing_dataset_root']
@@ -589,8 +693,16 @@ def main(_):
 
 
 if __name__ == "__main__":
+    import sys
+    import argparse
+
     parser = argparse.ArgumentParser()
-    parser.add_argument('-m', '--mode', help="Choose a net running mode: training, batch_testing or single_testing", required=True)
+    parser.add_argument(
+        '-m', '--mode',
+        help="Choose a net running mode: training, batch_testing or single_testing",
+        default="training"  # ✅ Default for IDE use
+    )
     Args = vars(parser.parse_args())
 
-    tf.app.run()
+    tf.compat.v1.disable_eager_execution()  # ✅ Ensure TF1 compatibility
+    tf.compat.v1.app.run(main=main)

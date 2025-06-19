@@ -2,3 +2,7 @@ venv/
 JigsawCNN/
 
 set_1_record.tfrecord
+test_tfrecord_fixed.tfrecord
+test_tfrecord.tfrecord
+train_tfrecord_fixed.tfrecord
+train_tfrecord.tfrecord
