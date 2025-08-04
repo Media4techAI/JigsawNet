@@ -462,10 +462,10 @@ void JigsawOpt2::CalculateError2d(const std::vector<int>& abstract_loop, const s
 	}
 
 	out_translation_err = sqrt(err_mat(0, 2)*err_mat(0, 2) + err_mat(1, 2)*err_mat(1, 2));
-	if (abs(err_mat(0.0) - 1) < 1e-5)
-		err_mat(0.0) = 1.0;
+	if (std::abs(err_mat(0,0) - 1.0) < 1e-5)
+		err_mat(0,0) = 1.0;
 	if (abs(err_mat(0, 0) + 1)<1e-5)
-		err_mat(0.0) = -1.0;
+		err_mat(0,0) = -1.0;
 	out_rotation_err = acos(err_mat(0, 0)) * 180 / 3.14159;
 }
 
@@ -473,10 +473,10 @@ bool JigsawOpt2::IsSameMatrix(const Eigen::Matrix3d& mat1, const Eigen::Matrix3d
 {
 	Eigen::Matrix3d err_mat = mat1*mat2.inverse();
 	double t_err = sqrt(err_mat(0, 2)*err_mat(0, 2) + err_mat(1, 2)*err_mat(1, 2));
-	if (abs(err_mat(0.0) - 1) < 1e-5)
-		err_mat(0.0) = 1.0;
+	if (abs(err_mat(0,0) - 1) < 1e-5)
+		err_mat(0,0) = 1.0;
 	if (abs(err_mat(0, 0) + 1)<1e-5)
-		err_mat(0.0) = -1.0;
+		err_mat(0,0) = -1.0;
 	double r_err = acos(err_mat(0, 0)) * 180 / 3.14159;
 
 	if (t_err < Parameters::T_err_threshold_ && r_err < Parameters::R_err_threshold_)

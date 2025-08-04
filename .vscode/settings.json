@@ -1,0 +1,13 @@
+{
+    "cmake.sourceDirectory": "/home/nugh75/Git/JigsawNet/GlobalReassembly",
+    "files.associations": {
+        "set": "cpp",
+        "eigen": "cpp",
+        "core": "cpp",
+        "generator": "cpp",
+        "coroutine": "cpp",
+        "algorithm": "cpp"
+    },
+    "C_Cpp.default.compilerPath": "",
+    "cSpell.enabled": false
+}

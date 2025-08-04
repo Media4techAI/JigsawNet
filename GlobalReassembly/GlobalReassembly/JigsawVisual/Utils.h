@@ -184,9 +184,9 @@ namespace JigsawVisualNS
 			for (int i = 0; i < (int)data_.size(); i++) {
 				Eigen::Matrix3d & trans = data_[i].transformation_;
 				fprintf(f, "%d\t%d\n", data_[i].frame1_, data_[i].frame2_);
-				fprintf(f, "%.8f %.8f %.8f %.8f\n", trans(0, 0), trans(0, 1), trans(0, 2));
-				fprintf(f, "%.8f %.8f %.8f %.8f\n", trans(1, 0), trans(1, 1), trans(1, 2));
-				fprintf(f, "%.8f %.8f %.8f %.8f\n", trans(2, 0), trans(2, 1), trans(2, 2));
+				fprintf(f, "%.8f %.8f %.8f\n", trans(0, 0), trans(0, 1), trans(0, 2));
+				fprintf(f, "%.8f %.8f %.8f\n", trans(1, 0), trans(1, 1), trans(1, 2));
+				fprintf(f, "%.8f %.8f %.8f\n", trans(2, 0), trans(2, 1), trans(2, 2));
 			}
 			fclose(f);
 		}

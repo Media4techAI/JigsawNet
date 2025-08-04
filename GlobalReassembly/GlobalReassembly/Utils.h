@@ -4,7 +4,8 @@
 #include <fstream>
 #include <Eigen/Core>
 #include <Eigen/Eigen>
-#include <experimental/generator>
+#include <generator>
+#include <iostream>
 
 //////////////////////////////  Loop ////////////////////////////////////////////
 struct Loop
@@ -357,7 +358,7 @@ struct IdRank_key_equal {
 class Utils
 {
 public:
-	static std::experimental::generator<std::vector<int>> combination_generator(const int n, const int k)
+	static std::generator<std::vector<int>> combination_generator(const int n, const int k)
 	{
 		std::vector<bool> v(n);
 		std::fill(v.begin(), v.begin() + k, true);
@@ -368,25 +369,25 @@ public:
 			for (int i = 0; i<n; ++i)
 				if (v[i])
 					comb.push_back(i);
-			yield comb;
+			co_yield comb;
 		} while (std::prev_permutation(v.begin(), v.end()));
 
 		comb.clear();
-		yield comb;
+		co_yield comb;
 	}
 
 	// output permutation A_n ^k
-	static std::experimental::generator<std::vector<int>> permutation_generator(const int n, const int k)
+	static std::generator<std::vector<int>> permutation_generator(const int n, const int k)
 	{
 		for (auto comb : combination_generator(n, k))
 		{
 			do
 			{
-				yield comb;
+				co_yield comb;
 			} while (std::next_permutation(comb.begin(), comb.end()));
 		}
 		std::vector<int> perm;
-		yield perm;
+		co_yield perm;
 	}
 };
 

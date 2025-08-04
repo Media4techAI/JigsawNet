@@ -169,7 +169,7 @@ bool MultiGraph::UnionFindSetJudgeAllLink()
 }
 
 
-std::experimental::generator<std::vector<int>> MultiGraph::LoopGenerator(int loop_length)
+std::generator<std::vector<int>> MultiGraph::LoopGenerator(int loop_length)
 {
 	int n = vertexNum_;
 	int k = loop_length;
@@ -180,10 +180,10 @@ std::experimental::generator<std::vector<int>> MultiGraph::LoopGenerator(int loo
 		{
 			if (comb.empty()) break;
 			if (LoopConnected(comb))
-				yield comb;
+				co_yield comb;
 		}
 		std::vector<int> comb;
-		yield comb;
+		co_yield comb;
 	}
 	else if(loop_length == 4)
 	{
@@ -196,11 +196,11 @@ std::experimental::generator<std::vector<int>> MultiGraph::LoopGenerator(int loo
 				for (int i = 0; i<index_perm.size(); ++i)
 					loop[i] = comb[index_perm[i]];
 				if (LoopConnected(loop))
-					yield loop;
+					co_yield loop;
 			}
 		}
 		std::vector<int> comb;
-		yield comb;
+		co_yield comb;
 	}
 	else if(loop_length == 6)
 	{
@@ -213,11 +213,11 @@ std::experimental::generator<std::vector<int>> MultiGraph::LoopGenerator(int loo
 				for (int i=0;i<index_perm.size();++i)
 					loop[i] = comb[index_perm[i]];
 				if (LoopConnected(loop))
-					yield loop;
+					co_yield loop;
 			}
 		}
 		std::vector<int> comb;
-		yield comb;
+		co_yield comb;
 	}
 	else
 	{
@@ -225,7 +225,7 @@ std::experimental::generator<std::vector<int>> MultiGraph::LoopGenerator(int loo
 	}
 }
 
-std::experimental::generator<std::vector<int>> MultiGraph::LoopGeneratorGreedy(int loop_length)
+std::generator<std::vector<int>> MultiGraph::LoopGeneratorGreedy(int loop_length)
 {
 	int n = vertexNum_;
 	int k = loop_length;
@@ -268,10 +268,10 @@ std::experimental::generator<std::vector<int>> MultiGraph::LoopGeneratorGreedy(i
 
 		for(auto& loop: loops)
 		{
-			yield loop.vertices;
+			co_yield loop.vertices;
 		}
 		std::vector<int> comb;
-		yield comb;
+		co_yield comb;
 	}
 	else if (loop_length == 4)
 	{
@@ -312,10 +312,10 @@ std::experimental::generator<std::vector<int>> MultiGraph::LoopGeneratorGreedy(i
 
 		for (auto& loop : loops)
 		{
-			yield loop.vertices;
+			co_yield loop.vertices;
 		}
 		std::vector<int> comb;
-		yield comb;
+		co_yield comb;
 	}
 	else
 	{

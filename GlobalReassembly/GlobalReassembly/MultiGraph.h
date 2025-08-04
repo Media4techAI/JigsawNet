@@ -34,10 +34,10 @@ public:
 	// Loop generator.
 	// Instead of DFS search, here we 1. Generator a combination; 2. validate this combination;
 	// It is NP-hard problem, we only implement length=3 and 4.
-	std::experimental::generator<std::vector<int>> LoopGenerator(int loop_length);
+	std::generator<std::vector<int>> LoopGenerator(int loop_length);
 
 	// A greedy strategy to generate loop
-	std::experimental::generator<std::vector<int>> LoopGeneratorGreedy(int loop_length);
+	std::generator<std::vector<int>> LoopGeneratorGreedy(int loop_length);
 
 
 	// Print function for debug.
