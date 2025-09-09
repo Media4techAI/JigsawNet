@@ -3,6 +3,7 @@ CNN boost training
 '''
 
 
+from ctypes import alignment
 import numpy as np
 import tensorflow as tf
 import JIgsawAbitraryNetROI
@@ -14,7 +15,7 @@ import sys
 import Utils
 import PairwiseAlignment2Image
 import argparse
-
+import re 
 Args = []
 
 def BoostTraining(net,
@@ -61,6 +62,22 @@ def BoostTraining(net,
         correct_prediction_test = tf.equal(pred_test, gt_classification_test)
         test_accuracy = tf.reduce_mean(tf.cast(correct_prediction_test, tf.float32))
         tf.summary.scalar('test_accuracy', test_accuracy)
+        # These are already defined correctly
+        gt_classification_test = tf.argmax(target_test, axis=1, name="gt_classification_test")
+        pred_test = tf.argmax(logits_test, axis=1, name="test_prediction")
+
+        # Add proper test metrics
+        test_precision_op = tf.metrics.precision(gt_classification_test, pred_test)
+        test_recall_op = tf.metrics.recall(gt_classification_test, pred_test)
+
+        test_precision = test_precision_op[1]
+        test_recall = test_recall_op[1]
+        test_f1 = 2 * test_precision * test_recall / (test_precision + test_recall + epsilon)
+
+        # Add to summary if needed
+        tf.summary.scalar('test_precision', test_precision)
+        tf.summary.scalar('test_recall', test_recall)
+        tf.summary.scalar('test_f1_score', test_f1)
 
     merged = tf.summary.merge_all()
 
@@ -121,7 +138,7 @@ def BoostTraining(net,
 
             if step % 100 == 0:
                 acc_test, precision_val_test, recall_val_test, f1_test = sess.run(
-                    [test_accuracy, precision, recall, f1_score]
+                    [test_accuracy, test_precision, test_recall, test_f1]
                 )
                 print(f"🧪 Test accuracy at step {step}: {acc_test:.4f}")
                 print(f"🧪 Test F1 score at step {step}: {f1_test:.4f}")
@@ -160,7 +177,7 @@ def BoostTraining(net,
         
         # Recalculate final metrics
         acc_test_final, precision_test_final, recall_test_final, f1_test_final = sess.run(
-            [test_accuracy, precision, recall, f1_score]
+            [test_accuracy, test_precision, test_recall, test_f1]
         )
 
         # Save final test metrics to a log file
@@ -458,7 +475,23 @@ def ValidatePathNet(alignments, gt_pose, fragments_dir, net, evaluator, K, Alpha
     else:
         f1 = open(os.path.join(fragments_dir, "filtered_alignments.txt"), 'w')
 
+
+    ### <<< START OF ADDED CODE
+    # Helper for sorting filenames numerically (e.g., "file_2.jpg" after "file_1.jpg")
+    def natural_sort_key(s):
+        import re
+        return [int(text) if text.isdigit() else text.lower() for text in re.split('([0-9]+)', s)]
+
+    # Find all image files and sort them naturally
+    image_filenames = sorted(
+        [f for f in os.listdir(fragments_dir) if f.lower().endswith(('.jpg', '.png', '.jpeg'))],
+        key=natural_sort_key
+    )
+    ### <<< END OF ADDED CODE
+
+
     for alignment in alignments.data:
+        print("Evaluating alignment: %s" % alignment)
         v1 = alignment.frame1
         v2 = alignment.frame2
         rank = alignment.rank
@@ -467,8 +500,11 @@ def ValidatePathNet(alignments, gt_pose, fragments_dir, net, evaluator, K, Alpha
 
         # gt judgement
         gt = 0
+        print(v1, v2)
         pose1 = gt_pose.data[v1]
         pose2 = gt_pose.data[v2]
+        print(f"pose1:{pose1}, pose2:{pose2}")
+
         gt_trans = np.matmul(np.linalg.inv(pose1), pose2)
         err_trans = np.matmul(trans, np.linalg.inv(gt_trans))
         if np.abs(err_trans[0, 0] - 1) < 1e-3:
@@ -479,11 +515,20 @@ def ValidatePathNet(alignments, gt_pose, fragments_dir, net, evaluator, K, Alpha
         translation_err = np.sqrt(err_trans[0, 2] ** 2 + err_trans[1, 2] ** 2)
         if theta < r_err_threshold and translation_err < t_err_threshold:
             gt = 1
+        print("gt judgement: %d, theta: %f, translation_err: %f" % (gt, theta, translation_err))
 
         # neural network judgement
-        image1 = cv2.imread(os.path.join(fragments_dir, "fragment_{0:04}.png".format(v1 + 1)))
-        image2 = cv2.imread(os.path.join(fragments_dir, "fragment_{0:04}.png".format(v2 + 1)))
+        ### <<< START OF CHANGED CODE
+        # Use the discovered filenames instead of hardcoded ones
+        img1_path = os.path.join(fragments_dir, image_filenames[v1])
+        img2_path = os.path.join(fragments_dir, image_filenames[v2])
+        image1 = cv2.imread(img1_path)
+        image2 = cv2.imread(img2_path)
+        ### <<< END OF CHANGED CODE
+
+        print("Loading images: %s, %s" % (image1.shape, image2.shape))
         item = PairwiseAlignment2Image.FusionImage(image1, image2, trans, bg_color)
+        print("Fusion image shape:", item[0].shape)
         if len(item) <= 0:
             continue
         path_img, overlap_ratio, transform_offset = item[0], item[1], item[2]
@@ -491,8 +536,10 @@ def ValidatePathNet(alignments, gt_pose, fragments_dir, net, evaluator, K, Alpha
 
         net.evaluate_image = resized_path_img
         [new_min_row_ratio, new_min_col_ratio, new_max_row_ratio, new_max_col_ratio] = Utils.ConvertRawStitchLine2BBoxRatio(raw_stitch_line, path_img, trans, transform_offset, max_expand_threshold=32)
+        print("new_min_row_ratio, new_min_col_ratio, new_max_row_ratio, new_max_col_ratio:", new_min_row_ratio, new_min_col_ratio, new_max_row_ratio, new_max_col_ratio)
         net.roi_box = [new_min_row_ratio, new_min_col_ratio, new_max_row_ratio, new_max_col_ratio]
         preds, probs = next(evaluator)
+        print("preds:", preds)
 
         for i in range(K):
             if preds[i] == gt and preds[i] == 1:
@@ -532,14 +579,10 @@ def ValidatePathNet(alignments, gt_pose, fragments_dir, net, evaluator, K, Alpha
         if save_all_leaner:
             if final_class == gt and final_class == 1:
                 tp[0] += 1
-                # f1.write("%d\t%d\t%f\t0\n" % (v1, v2, correct_probability))
-                # f1.write("%f %f %f\n%f %f %f\n0 0 1\n" % (trans[0, 0], trans[0, 1], trans[0, 2], trans[1, 0], trans[1, 1], trans[1, 2]))
             if final_class == gt and final_class == 0:
                 tn[0] += 1
             if final_class != gt and final_class == 1:
                 fp[0] += 1
-                # f1.write("%d\t%d\t%f\t1\n" % (v1, v2, correct_probability))
-                # f1.write("%f %f %f\n%f %f %f\n0 0 1\n" % (trans[0, 0], trans[0, 1], trans[0, 2], trans[1, 0], trans[1, 1], trans[1, 2]))
             if final_class != gt and final_class == 0:
                 fn[0] += 1
             f[0].write("%d\t%d\t%f\t%d\t%d\n" % (v1, v2, correct_probability, gt, final_class))
@@ -570,7 +613,6 @@ def ValidatePathNet(alignments, gt_pose, fragments_dir, net, evaluator, K, Alpha
         else:
             print("evaluation result for learner%d: tp,tn,fn,fp = %d, %d, %d, %d" % (i, tp[i], tn[i], fn[i], fp[i]))
     return tp, tn, fn, fp
-
 
 def main(_):
     mode = Args['mode']
@@ -661,8 +703,8 @@ def main(_):
     elif mode == "single_testing":          # use alignment transformation as input to evaluate.
         '''Single Testing'''
         testing_data_root1 = Parameters.WorkSpacePath["example_testing_root"]
-        fragments_dirs = glob.glob(os.path.join(testing_data_root1, "*_ex"))
-
+        fragments_dirs = [testing_data_root1]
+        
         with open(os.path.join(checkpoint_root, "alpha.txt")) as f:
             for line in f:
                 line = line.rstrip()
@@ -672,24 +714,67 @@ def main(_):
 
         net = JIgsawAbitraryNetROI.JigsawNetWithROI(params=Parameters.NNHyperparameters)
         evaluator = SingleTest(checkpoint_root=checkpoint_root, K=5, net=net, is_training=False)
+        
+        testing_data_root1 = Parameters.WorkSpacePath["example_testing_root"]
+        print(f"Looking inside: {testing_data_root1}")
+
+        # List everything inside
+        all_files = os.listdir(testing_data_root1)
+        print("Contents:")
+        for f in all_files:
+            print(f" - {f}")
 
         for i in range(len(fragments_dirs)):
-            print("dataset %d/%d:" % (i, len(fragments_dirs)))
-            if not os.path.exists(os.path.join(fragments_dirs[i], "alignments.txt")):
+            print(f"dataset {i+1}/{len(fragments_dirs)}: {fragments_dirs[i]}")
+
+            align_path = os.path.join(fragments_dirs[i], "alignments.txt")
+            if not os.path.exists(align_path):
+                print(f"   ⛔ Missing alignments.txt, skipping.")
                 continue
+            print(f"   ✅ Found alignments.txt")
+
             bg_color_file = os.path.join(fragments_dirs[i], "bg_color.txt")
-            with open(bg_color_file) as f:
-                for line in f:
-                    line = line.split()
-                    if line:
-                        bg_color = [int(i) for i in line]
-                        bg_color = bg_color[::-1]
-            gt_pose = os.path.join(fragments_dirs[i], "groundTruth.txt")
-            relative_alignment = os.path.join(fragments_dirs[i], "alignments.txt")
-            gt_pose = Utils.GtPose(gt_pose)
-            alignments = Utils.Alignment2d(relative_alignment)
-            ValidatePathNet(alignments, gt_pose, fragments_dirs[i], net, evaluator, K, Alpha, bg_color, save_all_leaner=False)
-            print("----------------")
+            if not os.path.exists(bg_color_file):
+                print(f"   ⛔ Missing bg_color.txt, using default white [255, 255, 255]")
+                bg_color = [255, 255, 255]
+            else:
+                with open(bg_color_file) as f:
+                    for line in f:
+                        line = line.split()
+                        if line:
+                            bg_color = [int(i) for i in line]
+                            bg_color = bg_color[::-1]
+                print(f"   ✅ bg_color loaded: {bg_color}")
+            if not os.path.exists(bg_color_file):
+                print(f"   ⛔ Missing bg_color.txt, using default white [255, 255, 255]")
+                bg_color = [255, 255, 255]
+            else:
+                with open(bg_color_file) as f:
+                    for line in f:
+                        line = line.split()
+                        if line:
+                            bg_color = [int(i) for i in line]
+                            bg_color = bg_color[::-1]
+                print(f"   ✅ bg_color loaded: {bg_color}")
+
+            gt_pose_path = os.path.join(fragments_dirs[i], "groundTruth.txt")
+            if not os.path.exists(gt_pose_path):
+                print(f"   ⛔ Missing groundTruth.txt, skipping.")
+                continue
+
+            try:
+                gt_pose = Utils.GtPose(gt_pose_path)
+                alignments = Utils.Alignment2d(align_path)
+                print("   ✅ Loaded gt_pose and alignments, starting validation...")
+            except Exception as e:
+                print(f"   ❌ Error loading groundTruth or alignments: {e}")
+                continue
+
+            try:
+                ValidatePathNet(alignments, gt_pose, fragments_dirs[i], net, evaluator, K, Alpha, bg_color)
+                print("   ✅ Validation completed.\n----------------")
+            except Exception as e:
+                print(f"   ❌ Error during ValidatePathNet: {e}")
 
 
 if __name__ == "__main__":
@@ -700,9 +785,11 @@ if __name__ == "__main__":
     parser.add_argument(
         '-m', '--mode',
         help="Choose a net running mode: training, batch_testing or single_testing",
-        default="training"  # ✅ Default for IDE use
+        default="single_testing"  # ✅ Changed default to single_testing
     )
     Args = vars(parser.parse_args())
 
     tf.compat.v1.disable_eager_execution()  # ✅ Ensure TF1 compatibility
+
+    # ⚠️ You must have defined a `main()` function above that dispatches by Args['mode']
     tf.compat.v1.app.run(main=main)
