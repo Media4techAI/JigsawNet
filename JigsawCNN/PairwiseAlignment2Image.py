@@ -4,6 +4,8 @@ Convert pairwise alignment transformation to one stitched image
 
 import cv2
 import numpy as np
+import os
+from glob import glob
 
 '''
 transform dst to src
@@ -75,3 +77,59 @@ def FusionImage(src, dst, transform, bg_color=[0,0,0]):
 
     offset_transform_matrix = np.float32([[1, 0, offset_row], [0, 1, offset_col], [0,0,1]])
     return [src_transformed, overlap_ratio, offset_transform_matrix]
+
+
+def load_alignment_file(filepath):
+    alignments = []
+    with open(filepath, 'r') as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#") or line.startswith("Node"):
+                continue
+            tokens = line.split()
+            if len(tokens) < 11:
+                print(f"Skipping short line: {line}")
+                continue
+            try:
+                v1, v2 = int(tokens[0]), int(tokens[1])
+                # tokens[2] is rank (float), we can ignore or store it
+                mat_flat = list(map(float, tokens[3:12]))  # 9 values for 3x3
+                mat = np.array(mat_flat, dtype=np.float32).reshape(3, 3)
+                alignments.append((v1, v2, mat))
+            except Exception as e:
+                print(f"Skipping invalid line: {line}\nReason: {e}")
+    return alignments
+
+def load_image_by_id(fragment_dir, idx):
+    filename = f"fragment_{idx+1:04d}.png"
+    path = os.path.join(fragment_dir, filename)
+    if not os.path.exists(path):
+        print(f"❌ Missing fragment image: {path}")
+        return None
+    return cv2.imread(path)
+
+def main(fragment_dir):
+    os.makedirs(os.path.join(fragment_dir, 'fused'), exist_ok=True)
+    alignment_file = os.path.join(fragment_dir, "alignments.txt")
+    alignments = load_alignment_file(alignment_file)
+
+    for v1, v2, transform in alignments:
+        img1 = load_image_by_id(fragment_dir, v1)
+        img2 = load_image_by_id(fragment_dir, v2)
+        if img1 is None or img2 is None:
+            print(f"Skipping fusion: missing fragment {v1} or {v2}")
+            continue
+
+        result = FusionImage(img1, img2, transform)
+        if not result:
+            print(f"❌ Fusion failed for ({v1}, {v2})")
+            continue
+
+        fused, overlap, _ = result
+        fused_path = os.path.join(fragment_dir, 'fused', f'fused_{v1}_{v2}.png')
+        cv2.imwrite(fused_path, fused)
+        print(f"✅ Saved: {fused_path} | Overlap: {overlap:.3f}")
+        
+if __name__ == "__main__":
+    path = "/home/nugh75/Git/archeology-fragment-reconstruction/dataset/250331-clean/set24/images/fragments/ortho_24.png/s8/other_folder"
+    main(path)
