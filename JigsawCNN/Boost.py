@@ -18,6 +18,41 @@ import argparse
 import re 
 Args = []
 
+# --- Checkpoint utilities ---
+def resolve_checkpoint_path(ckpt_dir):
+    """Return a valid checkpoint path inside ckpt_dir.
+
+    Handles cases where checkpoint files were created on Windows and contain
+    absolute paths that don't exist on Linux. We prefer the latest .index/.meta
+    pair in ckpt_dir.
+    """
+    # 1) Try TensorFlow's latest_checkpoint first
+    try:
+        latest = tf.train.latest_checkpoint(ckpt_dir)
+        if latest and os.path.exists(latest + ".index"):
+            return latest
+    except Exception:
+        pass
+
+    # 2) Manual scan of .index files
+    idx_files = sorted(glob.glob(os.path.join(ckpt_dir, "*.index")))
+    if idx_files:
+        # Remove extension to get checkpoint prefix
+        prefix = os.path.splitext(idx_files[-1])[0]
+        return prefix
+
+    # 3) Fallback: look into subfolders g0..gN if present
+    subdirs = sorted([p for p in glob.glob(os.path.join(ckpt_dir, "g*")) if os.path.isdir(p)])
+    for sd in subdirs:
+        latest = tf.train.latest_checkpoint(sd)
+        if latest and os.path.exists(latest + ".index"):
+            return latest
+        idx_files = sorted(glob.glob(os.path.join(sd, "*.index")))
+        if idx_files:
+            return os.path.splitext(idx_files[-1])[0]
+
+    raise FileNotFoundError(f"No valid checkpoint found in '{ckpt_dir}'")
+
 def BoostTraining(net,
                   input, roi_box, target, weights, data_ids,
                   input_test, roi_box_test, target_test, weights_test, data_ids_test,
@@ -246,7 +281,7 @@ def Evaluation(net, input, roi_box, target, weights, data_ids, checkpoint_dir, i
     wI = 0
     with tf.Session() as sess:
         sess.run(sess_init_op)
-        saver.restore(sess, tf.train.latest_checkpoint(checkpoint_dir + '/'))
+        saver.restore(sess, resolve_checkpoint_path(checkpoint_dir))
         # optimistic_restore(session=sess, save_file=checkpoint_dir + '/-5')
         print("model restored!")
         coord = tf.train.Coordinator()
@@ -305,7 +340,7 @@ def SingleTest(checkpoint_root, K, net, is_training=False):
         sess = tf.Session()
         sess_init_op = tf.group(tf.global_variables_initializer(), tf.local_variables_initializer())
         sess.run(sess_init_op)
-        saver.restore(sess, tf.train.latest_checkpoint(check_point + '/'))
+        saver.restore(sess, resolve_checkpoint_path(check_point))
         print("restore model %d...Done!" % i)
         sessions.append(sess)
 
@@ -347,7 +382,7 @@ def BatchTest(checkpoint_root, testing_tfrecord_filename, K, net, Alpha, is_trai
         sess = tf.Session()
         sess_init_op = tf.group(tf.global_variables_initializer(), tf.local_variables_initializer())
         sess.run(sess_init_op)
-        saver.restore(sess, tf.train.latest_checkpoint(check_point + '/'))
+        saver.restore(sess, resolve_checkpoint_path(check_point))
         print("restore model %d...Done!" % i)
         sessions.append(sess)
 
