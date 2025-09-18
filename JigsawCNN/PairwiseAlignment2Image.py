@@ -75,3 +75,95 @@ def FusionImage(src, dst, transform, bg_color=[0,0,0]):
 
     offset_transform_matrix = np.float32([[1, 0, offset_row], [0, 1, offset_col], [0,0,1]])
     return [src_transformed, overlap_ratio, offset_transform_matrix]
+
+import os
+import Utils as Utils
+import cv2
+
+def generate_alignment_images(
+        fragments_dir,
+        alignments_path=None,
+        output_dir=None,
+        bg_color=None,
+    ):
+    """
+    Generate stitched preview images for each alignment in a folder.
+
+    Inputs:
+    - fragments_dir: directory containing fragment_XXXX.png and optional bg_color.txt
+    - alignments_path: path to alignments.txt (defaults to fragments_dir/alignments.txt)
+    - output_dir: directory to save stitched images (defaults to fragments_dir/alignment_images)
+    - bg_color: list [B,G,R] background color; if None, tries bg_color.txt, else uses [0,0,0]
+
+    Output:
+    - A list of saved image file paths.
+    """
+    # Resolve defaults
+    if alignments_path is None:
+        alignments_path = os.path.join(fragments_dir, "alignments.txt")
+    if output_dir is None:
+        output_dir = os.path.join(fragments_dir, "alignment_images")
+
+    with open(alignments_path) as f:
+        for ln in f:
+            if not ln.startswith('Node'):
+                parts = ln.split()
+                A = np.array(list(map(float, parts[3:12]))).reshape(3,3)
+                break
+
+    # Discover background color if not provided
+    if bg_color is None:
+        bg_color_file = os.path.join(fragments_dir, "bg_color.txt")
+        if os.path.exists(bg_color_file):
+            try:
+                with open(bg_color_file) as f:
+                    for line in f:
+                        parts = line.split()
+                        if parts:
+                            # bg_color.txt is stored as RGB; OpenCV uses BGR
+                            rgb = [int(x) for x in parts]
+                            bg_color = rgb[::-1]
+                            break
+            except Exception:
+                bg_color = None
+    if bg_color is None:
+        bg_color = [0, 0, 0]
+
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Parse alignments
+    alignments = Utils.Alignment2d(alignments_path)
+
+    saved_paths = []
+    for idx, alignment in enumerate(alignments.data):
+        v1 = alignment.frame1
+        v2 = alignment.frame2
+        trans = alignment.transform
+        
+        # Load fragment images
+        img1_path = os.path.join(fragments_dir, "fragment_{:04}.png".format(v1 + 1))
+        img2_path = os.path.join(fragments_dir, "fragment_{:04}.png".format(v2 + 1))
+        img1 = cv2.imread(img1_path)
+        img2 = cv2.imread(img2_path)
+        if img1 is None or img2 is None:
+            # Skip if missing fragments
+            continue
+
+
+        fused = FusionImage(img1, img2, trans, bg_color)
+        if len(fused) == 0:
+            continue
+        fused_img = fused[0]
+
+        out_name = "alignment_{:04}_v{:04}_v{:04}_r{}".format(idx, v1 + 1, v2 + 1, alignment.rank)
+        out_path = os.path.join(output_dir, out_name + ".png")
+        cv2.imwrite(out_path, fused_img)
+        saved_paths.append(out_path)
+
+    return saved_paths
+
+
+# fragments_dir = "C:\\Users\\user\\Git\\JigsawNet\\Examples\\MIT_ex"
+# alignments_path = "C:\\Users\\user\\Git\\JigsawNet\\Examples\\MIT_ex\\alignments.txt"
+# output_dir = "C:\\Users\\user\\Git\\JigsawNet\\Examples\\MIT_ex\\alignment_images"
+# generate_alignment_images(fragments_dir, alignments_path=alignments_path, output_dir=output_dir, bg_color=[232, 8, 248])  # pink background

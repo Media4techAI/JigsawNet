@@ -134,145 +134,71 @@ class Alignment2d:
                 self.mapIdpairRank2Transform[new_key] = index
                 self.data[index].rank = rank+1
 
-def ExpandROI(aligned_img, bbox_min_row, bbox_min_col, bbox_max_row, bbox_max_col, max_expand_threshold=32):
-    min_row1, min_col1, max_row1, max_col1 = bbox_min_row, bbox_min_col, bbox_max_row, bbox_max_col
-    min_row2, min_col2, max_row2, max_col2 = bbox_min_row, bbox_min_col, bbox_max_row, bbox_max_col
-
-    ''' 1. try to move upper and lower boundary first'''
-    # upper boundary move up
-    for i in range(1, max_expand_threshold):
-        row = bbox_min_row-i
-        if row<0:
-            break
-        bg_pixel_count = 0
-        for col in range(bbox_min_col, bbox_max_col):
-            if np.array_equal(aligned_img[row, col], [0,0,0]):
-                bg_pixel_count+=1
-        bg_pixel_ratio = bg_pixel_count/(bbox_max_col-bbox_min_col)
-
-        if bg_pixel_count > 5 or bg_pixel_ratio>0.5:
-            break
-        else:
-            min_row1 = row
-
-    # lower boundary move down
-    for i in range(1, max_expand_threshold):
-        row = bbox_max_row + i
-        if row>=aligned_img.shape[0]:
-            break
-        bg_pixel_count = 0
-        for col in range(bbox_min_col, bbox_max_col):
-            if np.array_equal(aligned_img[row, col], [0, 0, 0]):
-                bg_pixel_count += 1
-        bg_pixel_ratio = bg_pixel_count / (bbox_max_col - bbox_min_col)
-
-        if bg_pixel_count > 5 or bg_pixel_ratio>0.5:
-            break
-        else:
-            max_row1 = row
-
-    # left boundary move left
-    for i in range(1, max_expand_threshold):
-        col = bbox_min_col - i
-        if col<0:
-            break
-        bg_pixel_count = 0
-        for row in range(min_row1, max_row1):
-            if np.array_equal(aligned_img[row, col], [0, 0, 0]):
-                bg_pixel_count += 1
-        bg_pixel_ratio = bg_pixel_count / (max_row1 - min_row1)
-
-        if bg_pixel_count > 5 or bg_pixel_ratio>0.5:
-            break
-        else:
-            min_col1 = col
-
-    # right boundary move right
-    for i in range(1, max_expand_threshold):
-        col = bbox_max_col + i
-        if col>=aligned_img.shape[1]:
-            break
-        bg_pixel_count = 0
-        for row in range(min_row1, max_row1):
-            if np.array_equal(aligned_img[row, col], [0, 0, 0]):
-                bg_pixel_count += 1
-        bg_pixel_ratio = bg_pixel_count / (max_row1 - min_row1)
-
-        if bg_pixel_count > 5 or bg_pixel_ratio>0.5:
-            break
-        else:
-            max_col1 = col
-
-    are1 = (max_col1-min_col1)*(max_row1-min_row1)
-
-    ''' 2.  try to move left and right boundary first'''
-    # left boundary move left
-    for i in range(1, max_expand_threshold):
-        col = bbox_min_col - i
-        if col < 0:
-            break
-        bg_pixel_count = 0
-        for row in range(bbox_min_row, bbox_max_row):
-            if np.array_equal(aligned_img[row, col], [0, 0, 0]):
-                bg_pixel_count += 1
-        bg_pixel_ratio = bg_pixel_count / (bbox_max_row - bbox_min_row)
-
-        if bg_pixel_count > 5 or bg_pixel_ratio > 0.5:
-            break
-        else:
-            min_col2 = col
-
-    # right boundary move right
-    for i in range(1, max_expand_threshold):
-        col = bbox_max_col + i
-        if col >= aligned_img.shape[1]:
-            break
-        bg_pixel_count = 0
-        for row in range(bbox_min_row, bbox_max_row):
-            if np.array_equal(aligned_img[row, col], [0, 0, 0]):
-                bg_pixel_count += 1
-        bg_pixel_ratio = bg_pixel_count / (bbox_max_row - bbox_min_row)
-
-        if bg_pixel_count > 5 or bg_pixel_ratio > 0.5:
-            break
-        else:
-            max_col2 = col
-    # upper boundary move up
-    for i in range(1, max_expand_threshold):
-        row = bbox_min_row - i
-        if row < 0:
-            break
-        bg_pixel_count = 0
-        for col in range(min_col2, max_col2):
-            if np.array_equal(aligned_img[row, col], [0, 0, 0]):
-                bg_pixel_count += 1
-        bg_pixel_ratio = bg_pixel_count / (max_col2 - min_col2)
-
-        if bg_pixel_count > 5 or bg_pixel_ratio > 0.5:
-            break
-        else:
-            min_row2 = row
-
-    # lower boundary move down
-    for i in range(1, max_expand_threshold):
-        row = bbox_max_row + i
-        if row >= aligned_img.shape[0]:
-            break
-        bg_pixel_count = 0
-        for col in range(min_col2, max_col2):
-            if np.array_equal(aligned_img[row, col], [0, 0, 0]):
-                bg_pixel_count += 1
-        bg_pixel_ratio = bg_pixel_count / (max_col2 - min_col2)
-
-        if bg_pixel_count > 5 or bg_pixel_ratio > 0.5:
-            break
-        else:
-            max_row2 = row
-    are2 = (max_col2-min_col2)*(max_row2-min_row2)
-    if are1>are2:
-        return [min_row1, min_col1, max_row1, max_col1]
+def ExpandROI(aligned_img, r0, c0, r1, c1, max_expand_threshold=32):
+    H, W = aligned_img.shape[:2]
+    if aligned_img.ndim == 3:
+        bg = np.all(aligned_img == 0, axis=2)
     else:
-        return [min_row2, min_col2, max_row2, max_col2]
+        bg = (aligned_img == 0)
+
+    # clamp initial box
+    r0 = int(np.clip(r0, 0, max(H-1, 0))); r1 = int(np.clip(r1, r0+1, H))
+    c0 = int(np.clip(c0, 0, max(W-1, 0))); c1 = int(np.clip(c1, c0+1, W))
+
+    def row_bg_ratio(r, c_lo, c_hi):  # c_hi exclusive
+        c_lo = max(0, min(c_lo, W)); c_hi = max(0, min(c_hi, W))
+        if c_hi <= c_lo: return 1.0
+        return bg[r, c_lo:c_hi].mean()
+
+    def col_bg_ratio(r_lo, r_hi, c):  # r_hi exclusive
+        r_lo = max(0, min(r_lo, H)); r_hi = max(0, min(r_hi, H))
+        if r_hi <= r_lo: return 1.0
+        return bg[r_lo:r_hi, c].mean()
+
+    # strategy A: up/down then left/right
+    ra0, ca0, ra1, ca1 = r0, c0, r1, c1
+    for i in range(1, max_expand_threshold+1):
+        rr = ra0 - i
+        if rr < 0 or row_bg_ratio(rr, ca0, ca1) > 0.5: break
+        ra0 = rr
+    for i in range(1, max_expand_threshold+1):
+        rr = ra1 + i
+        if rr > H or row_bg_ratio(rr-1, ca0, ca1) > 0.5: break
+        ra1 = rr
+    for i in range(1, max_expand_threshold+1):
+        cc = ca0 - i
+        if cc < 0 or col_bg_ratio(ra0, ra1, cc) > 0.5: break
+        ca0 = cc
+    for i in range(1, max_expand_threshold+1):
+        cc = ca1 + i
+        if cc > W or col_bg_ratio(ra0, ra1, cc-1) > 0.5: break
+        ca1 = cc
+    areaA = (ra1 - ra0) * (ca1 - ca0)
+
+    # strategy B: left/right then up/down
+    rb0, cb0, rb1, cb1 = r0, c0, r1, c1
+    for i in range(1, max_expand_threshold+1):
+        cc = cb0 - i
+        if cc < 0 or col_bg_ratio(rb0, rb1, cc) > 0.5: break
+        cb0 = cc
+    for i in range(1, max_expand_threshold+1):
+        cc = cb1 + i
+        if cc > W or col_bg_ratio(rb0, rb1, cc-1) > 0.5: break
+        cb1 = cc
+    for i in range(1, max_expand_threshold+1):
+        rr = rb0 - i
+        if rr < 0 or row_bg_ratio(rr, cb0, cb1) > 0.5: break
+        rb0 = rr
+    for i in range(1, max_expand_threshold+1):
+        rr = rb1 + i
+        if rr > H or row_bg_ratio(rr-1, cb0, cb1) > 0.5: break
+        rb1 = rr
+    areaB = (rb1 - rb0) * (cb1 - cb0)
+
+    if areaA >= areaB:
+        return ra0, ca0, ra1, ca1
+    else:
+        return rb0, cb0, rb1, cb1
 
 
 def ConvertRawStitchLine2BBoxRatio(raw_stitch_line, stitched_img, transform, offset_transform, max_expand_threshold):
