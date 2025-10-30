@@ -135,7 +135,8 @@ if(UNIX)
         -Wall;
         -march=native;
         -fopenmp;
-        $<$<COMPILE_LANGUAGE:CXX>:-std=c++20>
+        $<$<COMPILE_LANGUAGE:CXX>:-std=gnu++23>
+        $<$<COMPILE_LANGUAGE:CUDA>:-std=c++17>
         -I/usr/include/opencv4
         -I/usr/include/eigen3
         -I/usr/local/cuda-13.0/targets/x86_64-linux/include
