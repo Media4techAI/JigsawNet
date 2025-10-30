@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.16.0 FATAL_ERROR)
 
-project(GlobalReassembly CXX)
+set(CMAKE_CUDA_ARCHITECTURES "120")
+project(GlobalReassembly LANGUAGES CXX CUDA)
+find_package(CUDAToolkit REQUIRED)
 
 ################################################################################
 # Set target arch type if empty. Visual studio solution generator provides it.

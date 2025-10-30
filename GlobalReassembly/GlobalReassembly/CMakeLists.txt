@@ -26,6 +26,7 @@ source_group("IntersectionDetector" FILES ${IntersectionDetector})
 
 set(IntersectionDetector__CUDAImageTransform
     "IntersectionDetector/CUDAImageTransform/TransformImage.cpp"
+    "IntersectionDetector/CUDAImageTransform/TransformImage.cu"
     "IntersectionDetector/CUDAImageTransform/TransformImage.cuh"
     "IntersectionDetector/CUDAImageTransform/TransformImage.h"
     "IntersectionDetector/CUDAImageTransform/Utils.cpp"
@@ -50,7 +51,17 @@ set(ALL_FILES
 ################################################################################
 # Target
 ################################################################################
-add_executable(${PROJECT_NAME} ${ALL_FILES} IntersectionDetector/CUDAImageTransform/TransformImage.o)
+add_executable(${PROJECT_NAME} ${ALL_FILES})
+
+# Check if CUDA is available and set properties for TransformImage.cu
+if(CUDAToolkit_FOUND)
+    # Set CUDA compilation for TransformImage.cu using modern CMake
+    set_source_files_properties(IntersectionDetector/CUDAImageTransform/TransformImage.cu PROPERTIES LANGUAGE CUDA)
+    target_link_libraries(${PROJECT_NAME} PRIVATE CUDA::cudart)
+    message(STATUS "CUDA support enabled for TransformImage.cu")
+else()
+    message(WARNING "CUDA not available - TransformImage.cu will not be compiled")
+endif()
 
 use_props(${PROJECT_NAME} "${CMAKE_CONFIGURATION_TYPES}" "${DEFAULT_CXX_PROPS}")
 ################################################################################
@@ -124,13 +135,13 @@ if(UNIX)
         -Wall;
         -march=native;
         -fopenmp;
-        -std=gnu++23;
+        $<$<COMPILE_LANGUAGE:CXX>:-std=c++20>
         -I/usr/include/opencv4
         -I/usr/include/eigen3
-        -I/usr/local/cuda-12.8/targets/x86_64-linux/include
+        -I/usr/local/cuda-13.0/targets/x86_64-linux/include
     )
     target_link_directories(${PROJECT_NAME} PRIVATE
-        /usr/local/cuda-12.8/targets/x86_64-linux/lib
+        /usr/local/cuda-13.0/targets/x86_64-linux/lib
     )
 endif()
 
