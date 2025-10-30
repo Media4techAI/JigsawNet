@@ -1,5 +1,5 @@
 {
-    "cmake.sourceDirectory": "/home/nugh75/Git/JigsawNet/GlobalReassembly",
+    "cmake.sourceDirectory": "/home/frame/JigsawNet/GlobalReassembly",
     "files.associations": {
         "set": "cpp",
         "eigen": "cpp",

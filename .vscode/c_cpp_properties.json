@@ -6,7 +6,7 @@
                 "${workspaceFolder}/**",
                 "/usr/include/opencv4",
                 "/usr/include/eigen3",
-                "/usr/local/cuda-12.8/targets/x86_64-linux/include"
+                "/usr/local/cuda-13.0/targets/x86_64-linux/include"
             ],
             "defines": [],
             "compilerPath": "/usr/bin/gcc",
@@ -15,7 +15,7 @@
             "intelliSenseMode": "linux-gcc-x64",
             "compilerArgs": [
                 "-fcoroutines",
-                "-L/usr/local/cuda-12.8/targets/x86_64-linux/lib"
+                "-L/usr/local/cuda-13.0/targets/x86_64-linux/lib"
             ]
         }
     ],
