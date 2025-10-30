@@ -6,12 +6,36 @@
                 "${workspaceFolder}/**",
                 "/usr/include/opencv4",
                 "/usr/include/eigen3",
-                "/usr/local/cuda-13.0/targets/x86_64-linux/include"
+                "/usr/local/cuda-13.0/targets/x86_64-linux/include",
+                "/usr/local/cuda-13.0/targets/x86_64-linux/include/cccl"
             ],
-            "defines": [],
+            "defines": [
+                "__CUDACC__"
+            ],
             "compilerPath": "/usr/bin/gcc",
             "cStandard": "gnu23",
             "cppStandard": "gnu++23",
+            "intelliSenseMode": "linux-gcc-x64",
+            "compilerArgs": [
+                "-fcoroutines",
+                "-L/usr/local/cuda-13.0/targets/x86_64-linux/lib"
+            ]
+        },
+        {
+            "name": "Linux NVCC",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "/usr/include/opencv4",
+                "/usr/include/eigen3",
+                "/usr/local/cuda-13.0/targets/x86_64-linux/include",
+                "/usr/local/cuda-13.0/targets/x86_64-linux/include/cccl"
+            ],
+            "defines": [
+                "__CUDACC__"
+            ],
+            "compilerPath": "/usr/local/cuda-13.0/bin/nvcc",
+            "cStandard": "c17",
+            "cppStandard": "c++17",
             "intelliSenseMode": "linux-gcc-x64",
             "compilerArgs": [
                 "-fcoroutines",
