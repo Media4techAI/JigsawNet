@@ -133,7 +133,7 @@ if(UNIX)
             -O2;
         >
         -Wall;
-        -march=native;
+        -march=x86-64;
         -fopenmp;
         $<$<COMPILE_LANGUAGE:CXX>:-std=gnu++23>
         $<$<COMPILE_LANGUAGE:CUDA>:-std=c++17>

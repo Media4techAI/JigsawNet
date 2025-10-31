@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16.0 FATAL_ERROR)
 
-set(CMAKE_CUDA_ARCHITECTURES "native")
+set(CMAKE_CUDA_ARCHITECTURES "all-major")
 set(CMAKE_CUDA_COMPILER "/usr/local/cuda-13.0/bin/nvcc")
 project(GlobalReassembly LANGUAGES CXX CUDA)
 find_package(CUDAToolkit REQUIRED)
