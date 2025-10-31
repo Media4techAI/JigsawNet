@@ -16,16 +16,21 @@ There are some of reassembly results from various public datasets and our own da
 
 We have tested this code on Windows10 x64 operation system.
 We developed a CNN to measure pairwise compatibility, which has been implemented on Python 3.6 and tensorflow.
-To globally reassemble, we designed a loop-based composition to calculate consistently reassembly result. The global algorithm has been implemented in C++ on Microsoft Visual Studio 2015 with CUDA 8 or 9 support. 
+To globally reassemble, we designed a loop-based composition to calculate consistently reassembly result. The global algorithm has been implemented in C++ on Microsoft Visual Studio 2015 with CUDA 8 or 9 support. It was later ported to Linux and can be built with CMake using GNU g++ 14.2 and CUDA 13.
 
 Below dependencies are necessary to run pairwise compatibility measurement module.
-* Python 3.6
-* Tensorflow 1.7.0 and its dependencies
+* Python 3.6 or 3.7
+* Tensorflow 1.7.0-1.15.5 and its dependencies
 
 You should install below software or libraries to run global reassembly part.
-* OpenCV 3.4.1
-* Eigen 3.3.4
-* CUDA 8.0 or 9.0
+* Windows binary
+  * OpenCV 3.4.1
+  * Eigen 3.3.4
+  * CUDA 8.0 or 9.0
+* Linux
+  * OpenCV 4.10.0 (needs only core, highgui, imgcodecs and imgproc components)
+  * Eigen 3.4.0
+  * CUDA 13
 
 Other version of those dependencies/libraries have not tested.
 
